@@ -63,6 +63,10 @@ def get_session_history(session_id: str) -> BaseChatMessageHistory:
 def serialize_chat_messages(messages: list[BaseMessage]) -> list[dict]:
     return [{"type": msg.__class__.__name__, "content": msg.content} for msg in messages]
 
+@app.get("/")
+def read_root():
+    return {"status": "API is running"}
+
 @app.post("/upload_pdf/")
 async def upload_pdf(
     file: UploadFile = File(...),
