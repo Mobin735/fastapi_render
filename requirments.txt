@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+python-dotenv
+langchain
+langserve
+langchain-groq
+langchain-huggingface
+langchain-community
+huggingface-hub
+sentence-transformers
+faiss-cpu
+PyPDF2
+tqdm
+requests
+langchain-tavily
+sse_starlette
