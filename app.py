@@ -47,10 +47,10 @@ app = FastAPI(
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # React dev server
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"],        # allow EVERY origin
+    allow_credentials=False,    # default; browsers now accept the wildcard
+    allow_methods=["*"],        # GET, POST, PUT, DELETE, …
+    allow_headers=["*"],        # any custom header
 )# Global chat history store
 chat_history = {}
 
