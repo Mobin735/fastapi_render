@@ -3,6 +3,12 @@ from fastapi.responses import JSONResponse
 import os
 import tempfile
 from dotenv import load_dotenv
+import pytesseract
+from PIL import Image
+from langchain_core.documents import Document
+
+# Configure Tesseract path
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
@@ -52,6 +58,14 @@ Due Date
 Payment Method
 
 Itemized Charges (in table format)
+    
+Most Expensive item
+
+Most Cheapest item
+     
+Most Bought items
+     
+Least Bought items
 
 Generate 2–3 actionable insights (e.g., highlight trends, compare amounts, identify late fees or opportunities to save).
 
@@ -83,7 +97,7 @@ app = FastAPI(
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # React dev server
+    allow_origins=["*"],  # React dev server
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -102,9 +116,8 @@ def serialize_chat_messages(messages: list[BaseMessage]) -> list[dict]:
 @app.get("/")
 def read_root():
     return {"message": "API IS UP and RUNNING!"}
-
 @app.post("/upload_pdf/")
-async def upload_pdf(
+async def upload_file(
     file: UploadFile = File(...),
     session_id: str = Form(...),
     user_input: str = Form(...)
@@ -116,23 +129,38 @@ async def upload_pdf(
         with open(file_path, "wb") as f:
             f.write(await file.read())
         
-        file_name =file.filename
-        file_type = file_name.split(".")[-1]
-        print(file_type)
+        file_name = file.filename
+        file_type = file_name.split(".")[-1].lower()
+
         chunks = []
-        # Load and split PDF
+
         if file_type == "pdf":
             loader = PyPDFLoader(file_path)
             docs = loader.load()
             splitter = RecursiveCharacterTextSplitter(chunk_size=600, chunk_overlap=20)
             chunks = splitter.split_documents(docs)
+
         elif file_type == "csv":
             loader = CSVLoader(file_path)
             docs = loader.load()
             splitter = RecursiveCharacterTextSplitter(chunk_size=600, chunk_overlap=20)
             chunks = splitter.split_documents(docs)
+
+        elif file_type in ["jpg", "jpeg", "png"]:
+            # Use OCR to extract text from image
+            image = Image.open(file_path)
+            extracted_text = pytesseract.image_to_string(image)
+
+            # Directly create chunks from extracted text
+            splitter = RecursiveCharacterTextSplitter(chunk_size=600, chunk_overlap=20)
+            chunks = splitter.split_text(extracted_text)
+
+            # Convert plain text chunks to document objects
+            chunks = [Document(page_content=chunk) for chunk in chunks]
+
         else:
             return JSONResponse(content={"error": "Unsupported file type"}, status_code=400)
+
         # Create vector DB and retriever
         db = FAISS.from_documents(chunks, embedding_model)
         retriever = db.as_retriever()
@@ -169,9 +197,9 @@ async def upload_pdf(
             "context": serialized_context,
             "history": serialized_history
         })
-        # return JSONResponse(content=result)
 
     except Exception as e:
+        print("error dss: ",e)
         return JSONResponse(content={"error": str(e)}, status_code=500)
 @app.post("/invoke_query/")
 async def upload_pdf(
