@@ -15,7 +15,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_community.chat_message_histories import ChatMessageHistory
-
+from langchain_community.document_loaders.csv_loader import CSVLoader
 from langchain_groq import ChatGroq
 from langchain_huggingface.embeddings import HuggingFaceEmbeddings
 from langchain.chains.combine_documents import create_stuff_documents_chain
@@ -31,7 +31,43 @@ embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
 # Define the prompt
 prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful assistant like Jarvis in Tony Stark’s lab. Think step-by-step using your own knowledge. Address the user as 'Sir'. Here is the context:\n\n{context}"),
+    ("system", """You are a smart assistant that helps users understand their bills. You will receive a bill in raw text form. Your job is to:
+
+Summarize the bill in a few sentences.
+
+Extract and list the following key fields (if available):
+
+Biller Name
+
+Customer Name
+
+Bill Number
+
+Billing Period
+
+Total Amount Due
+
+Due Date
+
+Payment Method
+
+Itemized Charges (in table format)
+
+Generate 2–3 actionable insights (e.g., highlight trends, compare amounts, identify late fees or opportunities to save).
+
+Highlight important elements (e.g., payment deadline, high charges) using *bold* or bullet points.
+
+If data is missing, say "Information not available."
+
+Structure your response with clear headings like:
+
+📄 Summary
+
+🔍 Key Details
+
+💡 Insights
+
+📌 Highlights Here is the context:\n\n{context}"""),
     MessagesPlaceholder(variable_name="history"),
     ("human", "{input}")
 ])
@@ -47,10 +83,10 @@ app = FastAPI(
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],        # allow EVERY origin
-    allow_credentials=False,    # default; browsers now accept the wildcard
-    allow_methods=["*"],        # GET, POST, PUT, DELETE, …
-    allow_headers=["*"],        # any custom header
+    allow_origins=["http://localhost:3000"],  # React dev server
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )# Global chat history store
 chat_history = {}
 
@@ -62,10 +98,6 @@ def get_session_history(session_id: str) -> BaseChatMessageHistory:
 
 def serialize_chat_messages(messages: list[BaseMessage]) -> list[dict]:
     return [{"type": msg.__class__.__name__, "content": msg.content} for msg in messages]
-
-@app.get("/")
-def read_root():
-    return {"status": "API is running"}
 
 @app.post("/upload_pdf/")
 async def upload_pdf(
@@ -79,13 +111,24 @@ async def upload_pdf(
         file_path = os.path.join(temp_dir, file.filename)
         with open(file_path, "wb") as f:
             f.write(await file.read())
-
+        
+        file_name =file.filename
+        file_type = file_name.split(".")[-1]
+        print(file_type)
+        chunks = []
         # Load and split PDF
-        loader = PyPDFLoader(file_path)
-        docs = loader.load()
-        splitter = RecursiveCharacterTextSplitter(chunk_size=400, chunk_overlap=20)
-        chunks = splitter.split_documents(docs)
-
+        if file_type == "pdf":
+            loader = PyPDFLoader(file_path)
+            docs = loader.load()
+            splitter = RecursiveCharacterTextSplitter(chunk_size=600, chunk_overlap=20)
+            chunks = splitter.split_documents(docs)
+        elif file_type == "csv":
+            loader = CSVLoader(file_path)
+            docs = loader.load()
+            splitter = RecursiveCharacterTextSplitter(chunk_size=600, chunk_overlap=20)
+            chunks = splitter.split_documents(docs)
+        else:
+            return JSONResponse(content={"error": "Unsupported file type"}, status_code=400)
         # Create vector DB and retriever
         db = FAISS.from_documents(chunks, embedding_model)
         retriever = db.as_retriever()
